@@ -1,0 +1,33 @@
+version: "3.8"
+services:
+  node-01:
+    build:
+      context: .
+    ports:
+      - "6001:6001"
+    command:
+      - "node-01"
+
+  node-02:
+    build:
+      context: .
+    ports:
+      - "6002:6002"
+    command:
+      - "node-02"
+
+  node-03:
+    build:
+      context: .
+    ports:
+      - "6003:6003"
+    command:
+      - "node-03"
+
+  node-04:
+    build:
+      context: .
+    ports:
+      - "6004:6004"
+    command:
+      - "node-04"
