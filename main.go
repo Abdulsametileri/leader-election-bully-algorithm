@@ -46,7 +46,19 @@ func main() {
 	<-c
 }
 
+func getNodeID() (string, error) {
+	if len(os.Args) < 2 {
+		return "", errors.New("node id required")
+	}
+
+	nodeID := os.Args[1]
+	return nodeID, nil
+}
+
 func setLogConfigurations() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
+	// https://github.com/rs/zerolog#add-file-and-line-number-to-log
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
 		short := file
 		for i := len(file) - 1; i > 0; i-- {
@@ -58,15 +70,6 @@ func setLogConfigurations() {
 		file = short
 		return file + ":" + strconv.Itoa(line)
 	}
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
 	log.Logger = log.With().Caller().Logger()
-}
-
-func getNodeID() (string, error) {
-	if len(os.Args) < 2 {
-		return "", errors.New("node id required")
-	}
-
-	nodeID := os.Args[1]
-	return nodeID, nil
 }

@@ -1,3 +1,0 @@
-# Node node-01 is connected to peer node-02,
-Node node-01 is connected to peer node-02
-çözmeye kafa yorulabilir.
