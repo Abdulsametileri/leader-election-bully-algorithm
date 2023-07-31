@@ -1,13 +1,13 @@
 package main
 
 import (
-	"io"
+	"net/rpc"
 	"sync"
 )
 
 type Peer struct {
 	ID        string
-	WriteSock io.WriteCloser
+	RPCClient *rpc.Client
 }
 
 type Peers struct {
@@ -15,18 +15,18 @@ type Peers struct {
 	peerByID map[string]*Peer
 }
 
-func NewPeerList() *Peers {
+func NewPeers() *Peers {
 	return &Peers{
 		RWMutex:  &sync.RWMutex{},
 		peerByID: make(map[string]*Peer),
 	}
 }
 
-func (p *Peers) Add(ID string, conn io.WriteCloser) {
+func (p *Peers) Add(ID string, client *rpc.Client) {
 	p.Lock()
 	defer p.Unlock()
 
-	p.peerByID[ID] = &Peer{ID: ID, WriteSock: conn}
+	p.peerByID[ID] = &Peer{ID: ID, RPCClient: client}
 }
 
 func (p *Peers) Delete(ID string) {
@@ -34,14 +34,6 @@ func (p *Peers) Delete(ID string) {
 	defer p.Unlock()
 
 	delete(p.peerByID, ID)
-}
-
-func (p *Peers) Find(ID string) bool {
-	p.RLock()
-	defer p.RUnlock()
-
-	_, ok := p.peerByID[ID]
-	return ok
 }
 
 func (p *Peers) Get(ID string) *Peer {
@@ -52,7 +44,19 @@ func (p *Peers) Get(ID string) *Peer {
 	return val
 }
 
-func (p *Peers) GetAll() []Peer {
+func (p *Peers) ToIDs() []string {
+	p.RLock()
+	defer p.RUnlock()
+
+	peerIDs := make([]string, 0, len(p.peerByID))
+	for _, peer := range p.peerByID {
+		peerIDs = append(peerIDs, peer.ID)
+	}
+
+	return peerIDs
+}
+
+func (p *Peers) ToList() []Peer {
 	p.RLock()
 	defer p.RUnlock()
 

@@ -8,7 +8,7 @@ func TestNode_IsLowerThan(t *testing.T) {
 	expected := true
 
 	// When
-	actual := node.IsHigherThan("node-01")
+	actual := node.IsRankHigherThan("node-01")
 
 	// Then
 	if expected != actual {

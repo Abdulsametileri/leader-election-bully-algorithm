@@ -4,12 +4,28 @@ const (
 	ConnectionBufferSize = 128
 )
 
+type Message struct {
+	FromPeerID string
+	Type       MessageType
+}
+
+func (m *Message) IsAliveMessage() bool {
+	return m.Type == ALIVE
+}
+
+func (m *Message) IsPongMessage() bool {
+	return m.Type == PONG
+}
+
 type MessageType uint32
 
 const (
-	ELECTION MessageType = iota + 1
+	PING MessageType = iota + 1
+	PONG
+	ELECTION
 	ALIVE
 	ELECTED
+	OK = 6
 )
 
 func FromValue(val uint32) MessageType {

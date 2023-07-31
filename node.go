@@ -1,10 +1,10 @@
 package main
 
 import (
-	"encoding/binary"
 	"github.com/rs/zerolog/log"
-	"io"
+	"leader-election/event"
 	"net"
+	"net/rpc"
 	"strings"
 	"time"
 )
@@ -21,123 +21,151 @@ type Node struct {
 	ID       string
 	Addr     string
 	LeaderID string
-	PeerList *Peers
-	aliveCh  chan string
+	Peers    *Peers
+	eventBus event.Bus
 }
 
 func NewNode(nodeID string) *Node {
-	return &Node{
+	node := &Node{
 		ID:       nodeID,
 		Addr:     nodeAddressByID[nodeID],
-		PeerList: NewPeerList(),
-		aliveCh:  make(chan string),
+		Peers:    NewPeers(),
+		eventBus: event.NewBus(),
+	}
+
+	node.eventBus.Subscribe(event.LeaderElected, node.PingLeaderContinuously)
+
+	return node
+}
+
+func (node *Node) NewListener() (net.Listener, error) {
+	addr, err := net.Listen("tcp", node.Addr)
+	return addr, err
+}
+
+func (node *Node) ConnectToPeers() {
+	for peerID, peerAddr := range nodeAddressByID {
+		if node.IsItself(peerID) {
+			continue
+		}
+
+		rpcClient := node.connect(peerAddr)
+
+		pingMessage := Message{FromPeerID: node.ID, Type: PING}
+		reply, _ := node.CommunicateWithPeer(rpcClient, pingMessage)
+
+		if reply.IsPongMessage() {
+			log.Debug().Msgf("%s got pong message from %s", node.ID, peerID)
+			node.Peers.Add(peerID, rpcClient)
+		}
 	}
 }
 
-func (node *Node) connect(peerID string) error {
-	writeSock, err := net.Dial("tcp", nodeAddressByID[peerID])
+func (node *Node) connect(peerAddr string) *rpc.Client {
+retry:
+	client, err := rpc.Dial("tcp", peerAddr)
 	if err != nil {
-		return err
+		log.Error().Msgf("Error dialing rpc dial %s", err.Error())
+		time.Sleep(50 * time.Millisecond)
+		goto retry
+	}
+	return client
+}
+
+func (node *Node) CommunicateWithPeer(RPCClient *rpc.Client, args Message) (Message, error) {
+	var reply Message
+
+	err := RPCClient.Call("Node.HandleMessage", args, &reply)
+	if err != nil {
+		log.Error().Msgf("Error calling HandleMessage %s", err.Error())
 	}
 
-	log.Debug().Msgf("Node %s is connected to peer %s", node.ID, peerID)
-	node.PeerList.Add(peerID, writeSock)
+	return reply, err
+}
+
+func (node *Node) HandleMessage(args Message, reply *Message) error {
+	reply.FromPeerID = node.ID
+
+	if args.Type == ELECTION {
+		reply.Type = ALIVE
+	} else if args.Type == ELECTED {
+		log.Debug().Msgf("%s peers %s", node.ID, node.Peers.ToIDs())
+		node.SetLeader(args.FromPeerID)
+		log.Info().Msgf("Election is done. %s has a new leader %s", node.ID, args.FromPeerID)
+		reply.Type = OK
+		node.eventBus.Emit(event.LeaderElected, args.FromPeerID)
+	} else if args.Type == PING {
+		reply.Type = PONG
+	}
+
 	return nil
 }
 
-func (node *Node) Listen() {
-	addr, err := net.Listen("tcp", node.Addr)
-	if err != nil {
-		log.Fatal().Err(err)
-	}
-
-	for {
-		conn, err := addr.Accept()
-		if err != nil {
-			log.Error().Msgf("inbound connection error: %v", err)
-			continue
-		}
-
-		go node.receive(conn)
-	}
-}
-
-func (node *Node) receive(conn io.ReadCloser) {
-	for {
-		buf := make([]byte, ConnectionBufferSize)
-		_, err := conn.Read(buf)
-		if err != nil {
-			log.Error().Err(err)
-			conn.Close()
-			break
-		}
-
-		mType := binary.LittleEndian.Uint32(buf[0:])
-		mLen := binary.LittleEndian.Uint32(buf[4:])
-		fromNode := string(buf[8 : 8+mLen])
-
-		log.Debug().Msgf("Message comes from %s, len %d in type %d", fromNode, mLen, mType)
-
-		switch FromValue(mType) {
-		case ELECTION:
-			node.Send(fromNode, ALIVE)
-		case ALIVE:
-			node.aliveCh <- fromNode
-		case ELECTED:
-			log.Info().Msgf("%s has new leader and it's id is %s", node.ID, fromNode)
-			node.SetLeader(fromNode)
-		}
-	}
-}
-
 func (node *Node) Elect() {
-	peers := node.PeerList.GetAll()
+	isHighestRankedNodeAvailable := false
 
+	peers := node.Peers.ToList()
 	for i := range peers {
-		peer := &peers[i]
+		peer := peers[i]
 
-		if node.IsHigherThan(peer.ID) {
+		if node.IsRankHigherThan(peer.ID) {
 			continue
 		}
 
-		node.Send(peer.ID, ELECTION)
+		log.Debug().Msgf("%s send ELECTION message to peer %s", node.ID, peer.ID)
+		electionMessage := Message{FromPeerID: node.ID, Type: ELECTION}
+
+		reply, _ := node.CommunicateWithPeer(peer.RPCClient, electionMessage)
+
+		if reply.IsAliveMessage() {
+			isHighestRankedNodeAvailable = true
+		}
 	}
 
-	select {
-	case aliveNode := <-node.aliveCh:
-		log.Debug().Msgf("ALIVE message has came to %s from %s", node.ID, aliveNode)
-	case <-time.After(3 * time.Second):
-		log.Info().Msgf("%s is making itself a leader", node.ID)
+	if !isHighestRankedNodeAvailable {
+		electedMessage := Message{FromPeerID: node.ID, Type: ELECTED}
+		node.BroadcastMessage(electedMessage)
 		node.SetLeader(node.ID)
-		node.Broadcast(ELECTED)
+		log.Info().Msgf("%s is a new leader", node.ID)
 	}
 }
 
-func (node *Node) Broadcast(mType MessageType) {
-	peers := node.PeerList.GetAll()
+func (node *Node) BroadcastMessage(args Message) {
+	peers := node.Peers.ToList()
 	for i := range peers {
-		peer := &peers[i]
-		node.Send(peer.ID, mType)
+		peer := peers[i]
+		node.CommunicateWithPeer(peer.RPCClient, args)
 	}
 }
 
-func (node *Node) Send(peer string, mType MessageType) {
-	if !node.PeerList.Find(peer) {
-		node.connect(peer)
+func (node *Node) PingLeaderContinuously(eventName string, payload any) {
+ping:
+	leader := node.Peers.Get(node.LeaderID)
+	pingMessage := Message{FromPeerID: node.ID, Type: PING}
+	reply, err := node.CommunicateWithPeer(leader.RPCClient, pingMessage)
+	if err != nil {
+		log.Info().Msgf("Leader is down, new election about to start!")
+		node.Peers.Delete(node.LeaderID)
+		node.LeaderID = ""
+		node.Elect()
+		return
 	}
 
-	buf := make([]byte, ConnectionBufferSize)
-	binary.LittleEndian.PutUint32(buf[0:], mType.ToValue())
-	binary.LittleEndian.PutUint32(buf[4:], uint32(len(node.ID)))
-	copy(buf[8:], node.ID)
-
-	node.PeerList.Get(peer).WriteSock.Write(buf)
+	if reply.IsPongMessage() {
+		log.Info().Msgf("Leader %s sent PONG message", reply.FromPeerID)
+		time.Sleep(3 * time.Second)
+		goto ping
+	}
 }
 
-func (node *Node) IsHigherThan(id string) bool {
+func (node *Node) IsRankHigherThan(id string) bool {
 	return strings.Compare(node.ID, id) == 1
 }
 
 func (node *Node) SetLeader(leaderID string) {
 	node.LeaderID = leaderID
+}
+
+func (node *Node) IsItself(id string) bool {
+	return node.ID == id
 }

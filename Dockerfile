@@ -10,4 +10,4 @@ WORKDIR /app/
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /app/node .
 ENTRYPOINT [ "/app/node" ]
-CMD [ "1" ]
+CMD [ "node-01" ]
