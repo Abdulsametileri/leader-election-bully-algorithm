@@ -68,9 +68,10 @@ var nodeAddressByID = map[string]string{
 ```
 
 In this repository, I wanted to avoid implementing a service discovery mechanism. 
-I aim to learn and implement basic how to do leader election :) 
-You can find my service discovery implementation and article [here](https://github.com/Abdulsametileri/simple-service-discovery) 
-to learn more about it!
+I aim to learn and implement basic how to do leader election without service discovery. 
+
+You can also find [my service discovery implementation](https://github.com/Abdulsametileri/simple-service-discovery) and 
+[article](https://itnext.io/lets-implement-basic-service-discovery-using-go-d91c513883f6)
 
 # Quickstart without Docker
 
