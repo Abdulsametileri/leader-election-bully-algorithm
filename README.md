@@ -1,46 +1,43 @@
 # Introduction
 
-When I read a book called [Database Internals](https://www.amazon.com/Database-Internals-Deep-Distributed-Systems/dp/1492040347) 
-I read a chapter about leader election. During the reading in order to learn more
-I decided to implement the simplest algorithm called *bully algorithm*. This repository
-is an implementation of [bully algorithm](https://en.wikipedia.org/wiki/Bully_algorithm) 
-in Go using [Remote Produce Call (RPC)](https://pkg.go.dev/net/rpc).
+When I read a book called [Database Internals](https://www.amazon.com/Database-Internals-Deep-Distributed-Systems/dp/1492040347), 
+I read a chapter about leader election. During the reading, to learn more, I decided to implement the most straightforward algorithm, 
+called the [bully algorithm](https://en.wikipedia.org/wiki/Bully_algorithm). 
+This repository implements the bully algorithm in Go using [Remote Produce Call (RPC)](https://pkg.go.dev/net/rpc).
 
-In the bully algorithm the fundamental idea is rank. It assumes that every node
-has a rank within cluster and the leader must be the highest one. So it uses node's
-rank value during the election.
+In the bully algorithm, the fundamental idea is rank. It assumes that every node has a rank within the cluster, and 
+the leader must be the highest. So it uses the node's rank value during the election.
 
 There are two situations for election.  
-* System is newly initialized so there is no leader
+* System is newly initialized, so there is no leader
 * One of the nodes notices that the leader is down.
 
-Election was implemented as follows:
-1. The node send "**ELECTION**" messages to the other nodes which has higher rank that own rank.
+The election is implemented as follows:
+1. The node sends "**ELECTION**" messages to the other nodes with higher ranks than their own.
 2. The node waits for "**ALIVE**" responses.
 - If no higher-ranked node responds, it makes itself a leader.
-- Otherwise, it is notified the new leader which has the highest rank.
+- Otherwise, it is notified of the new leader who has the highest rank.
 
 Let's illustrate these scenarios: 
 
-We assumed that the highest rank order like: **node-04 > node-03 > node-02 > node-01**
+We assumed that the highest rank order, like: **node-04 > node-03 > node-02 > node-01**
 
 - If the system is newly initialized 
 
 ![election step one](assets/election-step-1.png)
 
-Because of node-04 didn't get alive message, it makes itself a leader, and it broadcasts
-"**ELECTED**" message for notifying other nodes about the election results.
+Because node-04 didn't get the alive message, it became a leader and broadcasted 
+the "**ELECTED**" message to notify other nodes about the election results.
 
 ![election step two](assets/election-step-2.png)
 
-In order to notice the leader is down, the other nodes periodically send "**PING**" messages
-and waiting the leader "**PONG**" responses. It the leader is down and the first node didn't get
-"**PONG**" message, that node starts the election process again.
+The other nodes periodically send "**PING**" messages to notice the leader is down and wait for the leader's "**PONG**" responses. 
+If the leader is down and the first node doesn't get "**PONG**" message, that node starts the election process again.
 
 ![ping pong step](assets/ping-pong-step.png)
 
-For example, node-01 didn't get PONG response from leader, it starts the election
-process again. Same processes as shown above is applied and node-03 will be a new leader
+For example, node-01 didn't get a PONG response from the leader; it started the election process again. 
+As shown above, the same operations are applied, and node-03 will be a new leader.
 
 ![new leader](assets/new-leader.png)
 
@@ -50,15 +47,15 @@ process again. Same processes as shown above is applied and node-03 will be a ne
 
 # Quickstart with Docker
 
-This project comes with an already configured [Docker Compose file](docker-compose.yml) launching four nodes.
+This project has an already configured [Docker Compose file](docker-compose.yml) launching four nodes.
 
 You can build and run docker-compose as follows:
 
 `docker-compose up --build`
 
-If you want to test the cluster behaviour, you can kill some of the nodes with docker commands.
+You can kill some nodes with docker commands to test the cluster behavior.
 
-If you want to add new nodes, please add its address to hardcoded variables
+If you want to add new nodes, please add its address to hardcoded variables.
 
 ```go
 // nodeAddressByID: It includes nodes currently in cluster
@@ -70,15 +67,16 @@ var nodeAddressByID = map[string]string{
 }
 ```
 
-In this repository, I don't want to implement service discovery mechanism. My aim is to learn
-and implement basic how to do leader election :) You can find my service discovery implementation and article 
-[there](https://github.com/Abdulsametileri/simple-service-discovery) to learn more about it! 
+In this repository, I wanted to avoid implementing a service discovery mechanism. 
+I aim to learn and implement basic how to do leader election :) 
+You can find my service discovery implementation and article [here](https://github.com/Abdulsametileri/simple-service-discovery) 
+to learn more about it!
 
 # Quickstart without Docker
 
 You can still execute this project without using Docker.
 
-First, change the node ips. For example
+First, change the Node IPs. For example
 
 ```go
 // nodeAddressByID: It includes nodes currently in cluster
