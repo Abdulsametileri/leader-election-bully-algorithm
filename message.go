@@ -21,5 +21,5 @@ const (
 	ELECTION
 	ALIVE
 	ELECTED
-	OK = 6
+	OK
 )

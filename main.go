@@ -30,7 +30,6 @@ func main() {
 	rpcServer := rpc.NewServer()
 	rpcServer.Register(node)
 
-	// FIXME: Accept bitmeden İstek atma durumları var
 	go rpcServer.Accept(listener)
 
 	node.ConnectToPeers()
