@@ -1,6 +1,7 @@
 version: "3.8"
 services:
   node-01:
+    container_name: node-01
     build:
       context: .
     ports:
@@ -9,6 +10,7 @@ services:
       - "node-01"
 
   node-02:
+    container_name: node-02
     build:
       context: .
     ports:
@@ -17,6 +19,7 @@ services:
       - "node-02"
 
   node-03:
+    container_name: node-03
     build:
       context: .
     ports:
@@ -25,6 +28,7 @@ services:
       - "node-03"
 
   node-04:
+    container_name: node-04
     build:
       context: .
     ports:

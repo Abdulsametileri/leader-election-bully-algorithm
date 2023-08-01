@@ -20,7 +20,6 @@ var nodeAddressByID = map[string]string{
 type Node struct {
 	ID       string
 	Addr     string
-	LeaderID string
 	Peers    *Peers
 	eventBus event.Bus
 }
@@ -64,7 +63,7 @@ func (node *Node) connect(peerAddr string) *rpc.Client {
 retry:
 	client, err := rpc.Dial("tcp", peerAddr)
 	if err != nil {
-		log.Error().Msgf("Error dialing rpc dial %s", err.Error())
+		log.Debug().Msgf("Error dialing rpc dial %s", err.Error())
 		time.Sleep(50 * time.Millisecond)
 		goto retry
 	}
@@ -76,7 +75,7 @@ func (node *Node) CommunicateWithPeer(RPCClient *rpc.Client, args Message) (Mess
 
 	err := RPCClient.Call("Node.HandleMessage", args, &reply)
 	if err != nil {
-		log.Error().Msgf("Error calling HandleMessage %s", err.Error())
+		log.Debug().Msgf("Error calling HandleMessage %s", err.Error())
 	}
 
 	return reply, err
@@ -89,9 +88,9 @@ func (node *Node) HandleMessage(args Message, reply *Message) error {
 	case ELECTION:
 		reply.Type = ALIVE
 	case ELECTED:
-		node.SetLeader(args.FromPeerID)
-		log.Info().Msgf("Election is done. %s has a new leader %s", node.ID, args.FromPeerID)
-		node.eventBus.Emit(event.LeaderElected, args.FromPeerID)
+		leaderID := args.FromPeerID
+		log.Info().Msgf("Election is done. %s has a new leader %s", node.ID, leaderID)
+		node.eventBus.Emit(event.LeaderElected, leaderID)
 		reply.Type = OK
 	case PING:
 		reply.Type = PONG
@@ -122,9 +121,9 @@ func (node *Node) Elect() {
 	}
 
 	if !isHighestRankedNodeAvailable {
-		electedMessage := Message{FromPeerID: node.ID, Type: ELECTED}
+		leaderID := node.ID
+		electedMessage := Message{FromPeerID: leaderID, Type: ELECTED}
 		node.BroadcastMessage(electedMessage)
-		node.SetLeader(node.ID)
 		log.Info().Msgf("%s is a new leader", node.ID)
 	}
 }
@@ -137,26 +136,27 @@ func (node *Node) BroadcastMessage(args Message) {
 	}
 }
 
-func (node *Node) PingLeaderContinuously(eventName string, payload any) {
+func (node *Node) PingLeaderContinuously(_ string, payload any) {
+	leaderID := payload.(string)
+
 ping:
-	if node.IsItself(node.LeaderID) {
-		log.Info().Msgf("Because of there is only one node %s, no need to ping ownself", node.ID)
+	leader := node.Peers.Get(leaderID)
+	if leader == nil {
+		log.Error().Msgf("%s, %s, %s", node.ID, leaderID, node.Peers.ToIDs())
 		return
 	}
 
-	leader := node.Peers.Get(node.LeaderID)
 	pingMessage := Message{FromPeerID: node.ID, Type: PING}
 	reply, err := node.CommunicateWithPeer(leader.RPCClient, pingMessage)
 	if err != nil {
 		log.Info().Msgf("Leader is down, new election about to start!")
-		node.Peers.Delete(node.LeaderID)
-		node.RemoveLeader()
+		node.Peers.Delete(leaderID)
 		node.Elect()
 		return
 	}
 
 	if reply.IsPongMessage() {
-		log.Info().Msgf("Leader %s sent PONG message", reply.FromPeerID)
+		log.Debug().Msgf("Leader %s sent PONG message", reply.FromPeerID)
 		time.Sleep(3 * time.Second)
 		goto ping
 	}
@@ -164,14 +164,6 @@ ping:
 
 func (node *Node) IsRankHigherThan(id string) bool {
 	return strings.Compare(node.ID, id) == 1
-}
-
-func (node *Node) SetLeader(leaderID string) {
-	node.LeaderID = leaderID
-}
-
-func (node *Node) RemoveLeader() {
-	node.LeaderID = ""
 }
 
 func (node *Node) IsItself(id string) bool {
