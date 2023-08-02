@@ -93,3 +93,7 @@ Second, you can set which node you want to run in `Program arguments` like
 
 `go run . node-02`
 
+## Additional ToDos
+
+- [ ] 1- Implement with service discovery
+- [ ] 2- Change ordered election to dynamic.
