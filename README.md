@@ -1,3 +1,7 @@
+# Introduction
+
+You can check [the article](https://medium.com/@abdulsamet-ileri/lets-implement-a-basic-leader-election-algorithm-using-go-with-rpc-6cd012515358) out.
+
 # Working Demo
 
 [![asciicast](https://asciinema.org/a/600162.svg)](https://asciinema.org/a/600162)
